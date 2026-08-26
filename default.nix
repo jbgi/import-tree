@@ -23,16 +23,33 @@ let
           files = leafs path;
         in
         {
-          imports = if scoped == { } then files else map scoped-import files;
+          imports = if scoped == { } then files else map scoped-import-module files;
         };
 
-      scoped-import = builtins.scopedImport (
-        {
-          inherit builtins;
-          __nixPath = [ ];
-        }
-        // scoped
-      );
+      # Like builtins.scopedImport but:
+      # - propagate builtins (but not other free variables) accross nested invocations
+      # - add in scope: `__scoped` and `builtins.scoped` for potential reuse in nested invocations
+      scoped-import =
+        scoped:
+        builtins.scopedImport (
+          {
+            builtins = builtins // {
+              nixPath = [ ];
+              inherit scoped;
+            };
+            __nixPath = [ ];
+            __scoped = scoped;
+          }
+          // scoped
+        );
+
+      scoped-import-module = file: {
+        # Let's not lose track of the original file even if scope-imported:
+        _file = file;
+        imports = [
+          (scoped-import scoped file)
+        ];
+      };
 
       leafs =
         let
